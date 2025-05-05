@@ -52,11 +52,11 @@ This ensures MongoDB runs securely and correctly even when started from a Window
 
 To check if the keyfile-based replica set is running properly:
 
-> > > docker exec -it mongo1 mongosh -u root -p example --authenticationDatabase admin
+> docker exec -it mongo1 mongosh -u root -p example --authenticationDatabase admin
 
 Then run:
 
-> > > rs.status()
+> rs.status()
 
 ## ⚙️ Key Configuration for High Availability
 
@@ -70,7 +70,7 @@ Then run:
 }
 ```
 
-    mongo1 is more likely to become primary due to a higher election priority.
+    Here mongo1 is more likely to become primary due to a higher election priority.
     In case of failure, mongo2 or mongo3 can automatically take over.
 
 ### 🔁 Automatic Failover
@@ -90,7 +90,7 @@ db.collection.insertOne(
 );
 ```
 
-    Ensures write is acknowledged by a majority of replica members.
+Ensures write is acknowledged by a majority of replica members.
 
 #### 🔎 Example: Read Concern
 
@@ -98,13 +98,14 @@ db.collection.insertOne(
 db.collection.find({ item: "abc" }).readConcern("majority");
 ```
 
-    Ensures read reflects data committed by a majority of the replica set.
+Ensures read reflects data committed by a majority of the replica set.
 
 ### 🧑‍⚖️ Optional: Adding an Arbiter for Quorum
 
 To prevent a tie in elections (when using an even number of nodes), you can add an arbiter. Arbiters do not store data but help maintain quorum.
 Example with Arbiter:
 
+```bash
 rs.initiate({
 \_id: "rs0",
 members: [
@@ -114,6 +115,7 @@ members: [
 { _id: 3, host: "mongo4:27017", arbiterOnly: true }
 ]
 });
+```
 
 ## 📌 Additional Considerations
 
