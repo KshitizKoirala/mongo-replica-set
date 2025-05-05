@@ -1,43 +1,110 @@
-docker exec -it mongo1 mongosh -u root -p example --authenticationDatabase admin
+# 🧩 MongoDB Replica Set with Keyfile Authentication
 
-rs.status()
+This project sets up a **MongoDB replica set** with authentication using a shared keyfile. It includes support for Windows host systems, high availability features, and guidance for secure and consistent reads/writes.
 
-Key Changes for High Availability:
+---
 
-    Election Priorities:
+## 🔐 Keyfile Generation
 
-        priority: 2 is assigned to mongo1, making it the preferred primary node. In case of a failover, mongo1 will have a higher chance of becoming primary.
+Create a base64-encoded keyfile to enable internal authentication between replica set members:
 
-        priority: 1 is assigned to mongo2 and mongo3, which will act as secondary nodes unless mongo1 becomes unavailable.
+```bash
+openssl rand -base64 756 > ./envs/mongo-keyfile
+truncate -s -1 ./envs/mongo-keyfile  # Remove trailing newline (important on Windows)
+chmod 400 ./envs/mongo-keyfile       # Restrict access to owner only
+```
 
-    Automatic Failover:
+This creates the keyfile inside ./envs/mongo-keyfile, removes any trailing newline (which Windows may add), and sets the file permissions so only the owner can read it.
 
-        If mongo1 goes down, either mongo2 or mongo3 can automatically take over as the new primary. The election happens automatically without manual intervention, thanks to the default MongoDB replica set behavior.
+## 📦 Volumes and Cross-Platform Compatibility
 
-    Write Concern:
+To support MongoDB replica set authentication in a cross-platform environment, especially on Windows (which doesn't support UNIX-style file permissions in bind mounts), we use the following strategy:
 
-        You can ensure that writes are acknowledged by at least two nodes (including the primary) before being considered successful by setting a write concern of w:2. This ensures that your data is written to at least two nodes, improving fault tolerance.
+1. Bind-mount the keyfile into the container at a neutral path:
+2. Copy the keyfile inside the container to a native Linux path (/data/mongo-keyfile) during startup
+3. Run MongoDB with the replica set and keyfile authentication enabled:
 
-    Read Concern:
+### Explained
 
-        You can configure read concern to ensure consistency when reading from the replica set. For example, using majority read concern will ensure that you only read data that has been committed by a majority of the replica set members.
+1. Bind-mount the keyfile into the container at a neutral path:
 
-Example for Write Concern and Read Concern:
+```yml
+- ./envs/mongo-keyfile:/etc/mongo-keyfile:ro
+```
 
-You can configure these in your application to ensure strong consistency and availability:
+2. Copy the keyfile inside the container to a native Linux path (/data/mongo-keyfile) during startup
 
+```bash
+    cp /etc/mongo-keyfile /data/mongo-keyfile &&
+    chmod 400 /data/mongo-keyfile &&
+    chown 999:999 /data/mongo-keyfile
+```
+
+3. Run MongoDB with the replica set and keyfile authentication enabled:
+
+```bash
+    docker-entrypoint.sh --replSet rs0 --bind_ip_all --keyFile /data/mongo-keyfile
+```
+
+This ensures MongoDB runs securely and correctly even when started from a Windows host.
+
+## ✅ Verifying Replica Set Status
+
+To check if the keyfile-based replica set is running properly:
+
+> > > docker exec -it mongo1 mongosh -u root -p example --authenticationDatabase admin
+
+Then run:
+
+> > > rs.status()
+
+## ⚙️ Key Configuration for High Availability
+
+### 🗳️ Election Priorities
+
+```bash
+{
+\_id: 0, host: "mongo1:27017", priority: 2, // Preferred primary
+\_id: 1, host: "mongo2:27017", priority: 1, // Secondary
+\_id: 2, host: "mongo3:27017", priority: 1 // Secondary
+}
+```
+
+    mongo1 is more likely to become primary due to a higher election priority.
+
+    In case of failure, mongo2 or mongo3 can automatically take over.
+
+### 🔁 Automatic Failover
+
+MongoDB replica sets handle failovers automatically. When the primary node goes down, a new primary is elected without manual intervention.
+
+### ✍️ Write Concern & 🔍 Read Concern
+
+You can improve consistency and durability by configuring write and read concerns.
+
+#### ✅ Example: Write Concern
+
+```js
 db.collection.insertOne(
-{ item: "abc", qty: 100 },
-{ writeConcern: { w: "majority", wtimeout: 5000 } } // Wait for majority acknowledgment
+  { item: "abc", qty: 100 },
+  { writeConcern: { w: "majority", wtimeout: 5000 } }
 );
+```
 
-db.collection.find({ item: "abc" }).readConcern("majority"); // Read only from the majority
+    Ensures write is acknowledged by a majority of replica members.
 
-Optional: Adding an Arbiter for Quorum
+#### 🔎 Example: Read Concern
 
-In some cases, if you want to avoid having an even number of replica set members (which could result in a tie in elections), you can add an arbiter. The arbiter doesn’t store data but helps with elections.
+```js
+db.collection.find({ item: "abc" }).readConcern("majority");
+```
 
-To add an arbiter, you can modify the rs.initiate call like so:
+    Ensures read reflects data committed by a majority of the replica set.
+
+### 🧑‍⚖️ Optional: Adding an Arbiter for Quorum
+
+To prevent a tie in elections (when using an even number of nodes), you can add an arbiter. Arbiters do not store data but help maintain quorum.
+Example with Arbiter:
 
 rs.initiate({
 \_id: "rs0",
@@ -49,10 +116,8 @@ members: [
 ]
 });
 
-In this case, mongo4 is an arbiter.
+## 📌 Additional Considerations
 
-Considerations:
+    Network Partitioning: MongoDB will automatically elect a new primary, but ensure your application is resilient to failovers (e.g., retry logic, connection handling).
 
-    Network Partitioning: MongoDB automatically elects a new primary in the event of network partitioning. However, it's critical to configure your applications for handling failovers, especially with regard to client connections and retries.
-
-    Maintenance Mode: If you’re doing maintenance on the primary node, you can use rs.stepDown() to manually trigger a primary election.
+    Maintenance Mode: Use rs.stepDown() to manually trigger an election when performing maintenance on the primary.

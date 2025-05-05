@@ -6,16 +6,26 @@ services:
       - 27017:27017
     env_file:
       - envs/mongo_db.env
+    volumes:
+      # Main data volume
+      - mongo1_data:/data/db
+      # Windows mount doesn't supprt Unix-style file permission so we need to
+      # Mount the file to a neutral location inside our container from host
+      - ./envs/mongo-keyfile:/etc/mongo-keyfile:ro
+      # Now after we copy into the Linux-based file system
+      # we need to change the permission to chmod 400
+      # Init scripts (will run ONCE on first start, in order)
+    ##### i.e.#####
     # Let the official entrypoint handle user creation & initdb scripts
-    command:
-      [
-        "mongod",
-        "--replSet",
-        "rs0",
-        "--keyFile",
-        "/etc/mongo-keyfile/keyfile",
-        "--bind_ip_all",
-      ]
+    # exec docker-entrypoint.sh --replSet rs0 --bind_ip_all --keyFile /data/mongo-keyfile
+    # docker-entrypoint.sh handles the entry point
+    command: >
+      bash -c "
+        cp /etc/mongo-keyfile /data/mongo-keyfile &&
+        chmod 400 /data/mongo-keyfile &&
+        chown 999:999 /data/mongo-keyfile &&
+        exec docker-entrypoint.sh --replSet rs0 --bind_ip_all --keyFile /data/mongo-keyfile
+      "
     healthcheck:
       test: mongosh --host localhost:27017 --eval 'db.adminCommand("ping")' || exit 1
       interval: 30s
@@ -23,20 +33,6 @@ services:
       start_period: 5s
       start_interval: 1s
       retries: 3
-    volumes:
-      # Main data volume
-      - mongo1_data:/data/db
-      # Mount the file to a neutral location inside our container from host
-      - ./envs/mongo-keyfile:/envs/mongo-keyfile:ro
-      # Windows mount doesn't supprt Unix-style file permission
-      # so we need to copy inside a tmpfs (Linux-style in-memory fs)
-      - tmp_keyfile:/etc/mongo-keyfile:rw
-      # Now after we copy into the Linux-based file system
-      # we need to change the permission to chmod 400
-      # Init scripts (will run ONCE on first start, in order)
-      - ./scripts/mongo-entrypoint.sh:/docker-entrypoint-initdb.d/01-init-keyfile.sh:ro
-    tmpfs:
-      - /etc/mongo-keyfile
     networks:
       - backend_net
 
@@ -47,16 +43,13 @@ services:
       - 27018:27017
     env_file:
       - envs/mongo_db.env
-    # Let the official entrypoint handle user creation & initdb scripts
-    command:
-      [
-        "mongod",
-        "--replSet",
-        "rs0",
-        "--keyFile",
-        "/etc/mongo-keyfile/keyfile",
-        "--bind_ip_all",
-      ]
+    command: >
+      bash -c "
+        cp /etc/mongo-keyfile /data/mongo-keyfile &&
+        chmod 400 /data/mongo-keyfile &&
+        chown 999:999 /data/mongo-keyfile &&
+        exec docker-entrypoint.sh --replSet rs0 --bind_ip_all --keyFile /data/mongo-keyfile
+      "
     healthcheck:
       test: mongosh --host localhost:27017 --eval 'db.adminCommand("ping")' || exit 1
       interval: 30s
@@ -66,11 +59,7 @@ services:
       retries: 3
     volumes:
       - mongo2_data:/data/db
-      - ./envs/mongo-keyfile:/envs/mongo-keyfile:ro
-      - tmp_keyfile:/etc/mongo-keyfile:rw
-      - ./scripts/mongo-entrypoint.sh:/docker-entrypoint-initdb.d/01-init-keyfile.sh:ro
-    tmpfs:
-      - /etc/mongo-keyfile
+      - ./envs/mongo-keyfile:/etc/mongo-keyfile:ro
     networks:
       - backend_net
 
@@ -81,15 +70,13 @@ services:
       - 27019:27017
     env_file:
       - envs/mongo_db.env
-    command:
-      [
-        "mongod",
-        "--replSet",
-        "rs0",
-        "--keyFile",
-        "/etc/mongo-keyfile/keyfile",
-        "--bind_ip_all",
-      ]
+    command: >
+      bash -c "
+        cp /etc/mongo-keyfile /data/mongo-keyfile &&
+        chmod 400 /data/mongo-keyfile &&
+        chown 999:999 /data/mongo-keyfile &&
+        exec docker-entrypoint.sh --replSet rs0 --bind_ip_all --keyFile /data/mongo-keyfile
+      "
     healthcheck:
       test: mongosh --host localhost:27017 --eval 'db.adminCommand("ping")' || exit 1
       interval: 30s
@@ -99,11 +86,32 @@ services:
       retries: 3
     volumes:
       - mongo3_data:/data/db
-      - ./envs/mongo-keyfile:/envs/mongo-keyfile:ro
-      - tmp_keyfile:/etc/mongo-keyfile:rw
-      - ./scripts/mongo-entrypoint.sh:/docker-entrypoint-initdb.d/01-init-keyfile.sh:ro
-    tmpfs:
-      - /etc/mongo-keyfile
+      - ./envs/mongo-keyfile:/etc/mongo-keyfile:ro
+    networks:
+      - backend_net
+
+  mongo4:
+    image: mongo:7
+    container_name: mongo4
+    ports:
+      - 27020:27017
+    restart: always
+    command: >
+      bash -c "
+        cp /etc/mongo-keyfile /data/mongo-keyfile &&
+        chmod 400 /data/mongo-keyfile &&
+        chown 999:999 /data/mongo-keyfile &&
+        exec docker-entrypoint.sh --replSet rs0 --bind_ip_all --keyFile /data/mongo-keyfile
+      "
+    healthcheck:
+      test: mongosh --host localhost:27017 --eval 'db.adminCommand("ping")' || exit 1
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      start_interval: 1s
+      retries: 3
+    volumes:
+      - ./envs/mongo-keyfile:/etc/mongo-keyfile:ro
     networks:
       - backend_net
 
@@ -117,12 +125,12 @@ services:
         condition: service_healthy
       mongo3:
         condition: service_healthy
+      mongo4:
+        condition: service_healthy
     env_file:
       - envs/mongo_db.env
     volumes:
-      # Since we have already created the volume in above services
       - ./scripts/init-replica.sh:/docker-entrypoint-initdb.d/init-replica.sh:ro
-      - ./envs/mongo-keyfile:/etc/mongo-keyfile:ro
     entrypoint: ["bash", "/docker-entrypoint-initdb.d/init-replica.sh"]
     networks:
       - backend_net
@@ -131,7 +139,6 @@ volumes:
   mongo1_data:
   mongo2_data:
   mongo3_data:
-  tmp_keyfile:
 
 networks:
   backend_net:
