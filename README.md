@@ -14,7 +14,7 @@ truncate -s -1 ./envs/mongo-keyfile  # Remove trailing newline (important on Win
 chmod 400 ./envs/mongo-keyfile       # Restrict access to owner only
 ```
 
-This creates the keyfile inside ./envs/mongo-keyfile, removes any trailing newline (which Windows may add), and sets the file permissions so only the owner can read it.
+This creates the keyfile inside **./envs/mongo-keyfile**, removes any trailing newline (which Windows may add), and sets the file permissions so only the owner can read it.
 
 ## 📦 Volumes and Cross-Platform Compatibility
 
@@ -71,7 +71,6 @@ Then run:
 ```
 
     mongo1 is more likely to become primary due to a higher election priority.
-
     In case of failure, mongo2 or mongo3 can automatically take over.
 
 ### 🔁 Automatic Failover
